@@ -12,22 +12,18 @@ DUMMY_PRICE_NPR = "NPR 500,000"
 INDEX_COLUMNS = ['brand', 'model', 'label', 'brand_norm', 'model_norm', 'label_norm']
 INDEX_COLUMNS_WITH_COUNT = ['brand', 'model', 'listing_count', 'label', 'brand_norm', 'model_norm', 'label_norm']
 
-# Holds the catalog data in memory after startup
 catalog_index = pd.DataFrame()
 
 
-# Clean up text for consistent searching — lowercase, no extra spaces
 def _normalize_text(value):
     return " ".join(str(value or "").strip().lower().split())
 
 
-# Return an empty DataFrame with the exact columns expected by search logic.
 def _empty_index(include_count=False):
     columns = INDEX_COLUMNS_WITH_COUNT if include_count else INDEX_COLUMNS
     return pd.DataFrame(columns=columns)
 
 
-# Apply one shared cleanup pipeline so catalog and CSV indexes are shaped the same way.
 def _prepare_index(df):
     df = df.copy()
     df['brand'] = df['brand'].fillna('').astype(str).str.strip()
@@ -45,7 +41,6 @@ def _prepare_index(df):
     return df
 
 
-# Load the vehicle_catalog.json file into memory once when the app starts
 def _load_catalog_index():
     global catalog_index
 
@@ -66,7 +61,6 @@ def _load_catalog_index():
         catalog_index = _empty_index()
 
 
-# Read the CSV file directly and return a brand/model index with listing counts
 def _read_csv_index():
     try:
         df = pd.read_csv(CSV_PATH, usecols=['name'])
@@ -85,7 +79,6 @@ def _read_csv_index():
         return _empty_index(include_count=True)
 
 
-# Search through an index and return ranked suggestions matching the query
 def _search_index(index_df, query, brand_filter, include_counts=False):
     if index_df.empty:
         return []
@@ -149,7 +142,6 @@ def _search_index(index_df, query, brand_filter, include_counts=False):
     return records
 
 
-# Validate that all required fields are present and numeric fields are valid numbers
 def _validate_prediction_input(form_data):
     required_fields = [
         'year', 'km_driven', 'fuel', 'seller_type', 'transmission',
@@ -177,34 +169,26 @@ def _validate_prediction_input(form_data):
     return None
 
 
-# Read request data in one place and return (is_json, payload) for a simple predict flow.
 def _read_prediction_payload():
     if request.is_json:
         return True, request.get_json(silent=True)
     return False, request.form.to_dict(flat=True)
 
 
-# Build the final success response for both API calls and template rendering.
 def _prediction_success_response(formatted_price, form_data):
     if request.is_json:
         return jsonify({'price': formatted_price, 'error': None})
     return render_template('estimate.html', price=formatted_price, error=None, form_data=form_data)
 
 
-# Build one consistent error response for both JSON and non-JSON requests.
 def _prediction_error_response(message, form_data, status_code=400):
     if request.is_json:
         return jsonify({'price': None, 'error': message}), status_code
     return render_template('estimate.html', price=None, error=message, form_data=form_data)
 
 
-# Load catalog once at startup
 _load_catalog_index()
 
-
-# ---------------------------------------------------------
-# PAGE ROUTES
-# ---------------------------------------------------------
 
 @app.route('/')
 def home_page():
@@ -221,17 +205,11 @@ def about_page():
     return render_template('about.html')
 
 
-# ---------------------------------------------------------
-# AUTOCOMPLETE
-# Reads CSV directly each time, falls back to catalog if CSV has no results
-# ---------------------------------------------------------
-
 @app.route('/autocomplete', methods=['GET'])
 def autocomplete():
     query = request.args.get('q', default='', type=str)
     brand_filter = request.args.get('brand', default='', type=str)
 
-    # Try the real CSV data first
     csv_index = _read_csv_index()
     csv_results = _search_index(csv_index, query=query, brand_filter=brand_filter, include_counts=True)
 
@@ -243,7 +221,6 @@ def autocomplete():
             'suggestions': [{**item, 'source': 'operational'} for item in csv_results],
         })
 
-    # Fall back to the catalog if CSV gave nothing
     catalog_results = _search_index(catalog_index, query=query, brand_filter=brand_filter, include_counts=False)
 
     return jsonify({
@@ -253,12 +230,6 @@ def autocomplete():
         'suggestions': [{**item, 'source': 'catalog'} for item in catalog_results],
     })
 
-
-# ---------------------------------------------------------
-# PREDICT
-# Validates input and returns a dummy price for now.
-# Replace DUMMY_PRICE_NPR with the real model output later.
-# ---------------------------------------------------------
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -272,9 +243,7 @@ def predict():
         if validation_error:
             return _prediction_error_response(validation_error, form_data)
 
-        # --- Replace this line with the real model prediction later ---
         formatted_price = DUMMY_PRICE_NPR
-        # --------------------------------------------------------------
 
         return _prediction_success_response(formatted_price, form_data)
 
